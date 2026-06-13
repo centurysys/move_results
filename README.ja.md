@@ -16,6 +16,8 @@ let value = opt.get
 
 `seq` や `string` を持つ大きな value object では、borrowed value から owned value へ変換される段階で backing storage がコピーされることがあります。
 
+`ensureMove(opt.get)` はこれを move に変えてくれるものではありません。Nim 2.2 では、その式が implicit copy を導入するためコンパイルエラーになります。これは安全装置として有用であり、同時に `Option.get` が take/move-out API ではなく borrow-style API であることをはっきり示しています。
+
 `move_results` は、その逆の用途向けです。つまり、「成功値を move out して、その container は二度と使わない」API のための型です。
 
 ## 特長
@@ -29,6 +31,7 @@ let value = opt.get
 - payload field は private
 - copy 禁止
 - take 後の再アクセスは `MoveResultDefect`
+- constructor 側で `ensureMove()` を使い、意図しない implicit copy を検出
 
 ## 要件
 
@@ -118,6 +121,19 @@ discard r.take()  # MoveResultDefect
 
 `MoveOption` も同様です。
 
+## 実装メモ
+
+`okMove` と `someMove` は `ensureMove(valueExpr)` を使い、constructor に渡された値が implicit copy にならないことをコンパイル時に確認します。
+
+`take()` と `takeError()` では、Nim の明示的な field move-out 操作を使っています。
+
+```nim
+move self.value
+move self.error
+```
+
+Nim 2.2 では object field に対する `ensureMove(self.value)` は拒否されます。一方で、明示的な field move-out は、この package の ARC/ORC pointer-stability test で no-copy 挙動を確認しています。
+
 ## 使うべき場面
 
 `move_results` が向いている場面:
@@ -139,4 +155,4 @@ discard r.take()  # MoveResultDefect
 nimble test
 ```
 
-テスト対象は ARC/ORC の debug / release build を想定しています。
+テスト対象は ARC/ORC の debug / release build です。

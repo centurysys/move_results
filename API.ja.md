@@ -51,6 +51,8 @@ return okMove(MoveResult[T, E], value)
 
 `value` を move して `Ok` result を作ります。
 
+`okMove` は内部で `ensureMove(value)` を使います。その式が implicit copy を必要とする場合、コンパイルエラーになります。
+
 短い形式では、外側の proc の `result` 型を使います。
 
 ```nim
@@ -75,7 +77,7 @@ return errMove(MoveResult[T, E], error)
 
 `Err` result を作ります。
 
-error は `ErrorCode` のような軽量 enum / code であることが多いため、`errMove` は error expression に `move` を強制しません。そのため `ErrorCode.Failed` のような enum literal もそのまま渡せます。
+error は `ErrorCode` のような軽量 enum / code であることが多いため、`errMove` は `ErrorCode.Failed` のような immutable literal も受け付けます。error expression が move 可能な場合は `ensureMove` を使い、そうでなければ通常代入に戻します。
 
 ### `someMove`
 
@@ -84,6 +86,8 @@ return someMove(value)
 ```
 
 `value` を move して `MoveOption[T]` を作ります。
+
+`someMove` は内部で `ensureMove(value)` を使います。その式が implicit copy を必要とする場合、コンパイルエラーになります。
 
 ### `noneMove`
 
@@ -160,6 +164,8 @@ discard r.isOk    # MoveResultDefect
 discard r.take()  # MoveResultDefect
 ```
 
+`take()` は明示的な field move-out を使います。Nim 2.2 では object field に対する `ensureMove(self.value)` は拒否されます。一方、`move self.value` はこの package が使い、テストしている field move-out 操作です。
+
 ### `takeError`
 
 ```nim
@@ -234,6 +240,11 @@ var b = a  # compile error
 通常の value container、borrow access、繰り返し参照、軽量値には標準 `Option` や一般的な `Result` が向いています。
 
 成功値が ownership object であり、container を1回だけ consume するのが通常の操作である場合は、`MoveResult` / `MoveOption` が向いています。
+
+目安としては、次のように考えると分かりやすいです。
+
+- `get` は borrow/read
+- `take` は move out and consume
 
 ## 対象 memory manager
 

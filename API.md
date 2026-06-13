@@ -6,8 +6,8 @@ This guide describes the public API of `move_results`.
 
 `MoveResult` and `MoveOption` are **take-only** containers.
 
-They are not general-purpose read-only containers.  They are intended for
-ownership transfer.  A value can be extracted once.  After extraction, the
+They are not general-purpose read-only containers. They are intended for
+ownership transfer. A value can be extracted once. After extraction, the
 container is consumed and further access raises `MoveResultDefect`.
 
 There is intentionally no `get()` API.
@@ -53,6 +53,9 @@ return okMove(MoveResult[T, E], value)
 
 Creates an `Ok` result by moving `value` into the container.
 
+`okMove` uses `ensureMove(value)` internally. If the expression would require an
+implicit copy, compilation fails.
+
 The short form uses the enclosing proc's `result` type:
 
 ```nim
@@ -77,9 +80,9 @@ return errMove(MoveResult[T, E], error)
 
 Creates an `Err` result.
 
-Error values are usually small enums or codes, so `errMove` does not force
-`move` on the error expression.  This allows enum literals such as
-`ErrorCode.Failed`.
+Error values are usually small enums or codes, so `errMove` accepts immutable
+literals such as `ErrorCode.Failed`. When the error expression can be moved,
+`errMove` uses `ensureMove`; otherwise it falls back to normal assignment.
 
 ### `someMove`
 
@@ -88,6 +91,9 @@ return someMove(value)
 ```
 
 Creates a `MoveOption[T]` by moving `value` into it.
+
+`someMove` uses `ensureMove(value)` internally. If the expression would require
+an implicit copy, compilation fails.
 
 ### `noneMove`
 
@@ -106,7 +112,7 @@ if r.isOk:
   ...
 ```
 
-Returns `true` if the result is `Ok`.  Returns `false` if it is `Err`.
+Returns `true` if the result is `Ok`. Returns `false` if it is `Err`.
 
 Raises `MoveResultDefect` if the result was already consumed.
 
@@ -117,7 +123,7 @@ if r.isErr:
   ...
 ```
 
-Returns `true` if the result is `Err`.  Returns `false` if it is `Ok`.
+Returns `true` if the result is `Err`. Returns `false` if it is `Ok`.
 
 Raises `MoveResultDefect` if the result was already consumed.
 
@@ -128,7 +134,7 @@ if opt.isSome:
   ...
 ```
 
-Returns `true` if the option is `Some`.  Returns `false` if it is `None`.
+Returns `true` if the option is `Some`. Returns `false` if it is `None`.
 
 Raises `MoveResultDefect` if the option was already consumed.
 
@@ -139,7 +145,7 @@ if opt.isNone:
   ...
 ```
 
-Returns `true` if the option is `None`.  Returns `false` if it is `Some`.
+Returns `true` if the option is `None`. Returns `false` if it is `Some`.
 
 Raises `MoveResultDefect` if the option was already consumed.
 
@@ -165,6 +171,10 @@ discard r.isOk    # MoveResultDefect
 discard r.take()  # MoveResultDefect
 ```
 
+`take()` uses explicit field move-out. Nim 2.2 rejects
+`ensureMove(self.value)` for object fields, while `move self.value` is the
+field move-out operation used and tested by this package.
+
 ### `takeError`
 
 ```nim
@@ -173,7 +183,7 @@ var err = r.takeError()
 
 Moves the error value out of a `MoveResult`.
 
-This can be done only once.  After `takeError()`, the result is consumed.
+This can be done only once. After `takeError()`, the result is consumed.
 
 ### `error`
 
@@ -183,8 +193,8 @@ echo r.error
 
 Borrows the error value as `lent E`.
 
-This is useful for inspecting small error values.  Use `takeError()` if the
-error itself is an ownership object.
+This is useful for inspecting small error values. Use `takeError()` if the error
+itself is an ownership object.
 
 ## Propagation with `?`
 
@@ -241,12 +251,17 @@ Use `move`, `take()`, or `?` instead.
 Use standard `Option` or conventional `Result` when you need a normal value
 container, borrowed access, repeated inspection, or lightweight values.
 
-Use `MoveResult` / `MoveOption` when success values are ownership objects and
-the normal operation is to consume the container exactly once.
+Use `MoveResult` / `MoveOption` when success values are ownership objects and the
+normal operation is to consume the container exactly once.
+
+A useful rule of thumb:
+
+- `get` means borrow/read
+- `take` means move out and consume
 
 ## Supported memory managers
 
 `move_results` targets ARC/ORC.
 
-The no-copy move-out behavior is tested under ARC/ORC.  `refc` is not a
-supported target for pointer-stability guarantees.
+The no-copy move-out behavior is tested under ARC/ORC. `refc` is not a supported
+target for pointer-stability guarantees.

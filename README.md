@@ -3,15 +3,15 @@
 Take-only `Result` and `Option` types for ownership-safe move-out semantics in Nim.
 
 `move_results` provides small single-use containers for APIs that return large
-value objects such as buffers, frames, packets, or pool items.  Unlike
+value objects such as buffers, frames, packets, or pool items. Unlike
 `std/options.get` or conventional `Result.value` APIs, successful values are not
-"read" from the container.  They are **taken** from it.
+"read" from the container. They are **taken** from it.
 
 After a value or error is extracted, the container becomes consumed.
 
 ## Why?
 
-Nim's standard `Option[T].get` returns a borrowed `lent T`.  That is the right
+Nim's standard `Option[T].get` returns a borrowed `lent T`. That is the right
 choice for many APIs, but when the caller writes an owned value such as:
 
 ```nim
@@ -20,6 +20,11 @@ let value = opt.get
 
 a large value object containing `seq` or `string` storage may be copied when the
 borrowed value is converted into an owned value.
+
+`ensureMove(opt.get)` does not turn this into a move. In Nim 2.2, it is rejected
+because the expression would introduce an implicit copy. This is a useful safety
+check, and it also makes the distinction clear: `Option.get` is a borrow-style
+API, not a take/move-out API.
 
 `move_results` is for the other case: APIs where the caller wants to move the
 successful value out and never use the container again.
@@ -35,6 +40,7 @@ successful value out and never use the container again.
 - private payload fields
 - copy prevention
 - use-after-take detection via `MoveResultDefect`
+- `ensureMove()` at construction time to reject accidental implicit copies
 
 ## Requirements
 
@@ -125,6 +131,16 @@ discard r.take()  # raises MoveResultDefect
 
 The same rule applies to `MoveOption`.
 
+## Implementation note
+
+`okMove` and `someMove` use `ensureMove(valueExpr)` to reject accidental implicit
+copies at construction time.
+
+`take()` and `takeError()` use Nim's explicit field move-out operation
+(`move self.value` / `move self.error`). Nim 2.2 rejects
+`ensureMove(self.value)` for object fields, while explicit field move-out passes
+the ARC/ORC pointer-stability tests used by this package.
+
 ## When to use this
 
 Use `move_results` when:
@@ -146,4 +162,4 @@ Do not use it when:
 nimble test
 ```
 
-The test suite should cover ARC/ORC debug and release builds.
+The test suite covers ARC/ORC debug and release builds.
