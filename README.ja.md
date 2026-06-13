@@ -30,6 +30,7 @@ let value = opt.get
 - `get()` API は提供しない
 - payload field は private
 - copy 禁止
+- `okMove` / `someMove` に渡した source value の再利用をコンパイル時に拒否
 - take 後の再アクセスは `MoveResultDefect`
 - constructor 側で `ensureMove()` を使い、意図しない implicit copy を検出
 
@@ -107,6 +108,22 @@ proc readAndUse(): MoveOption[Packet] =
   return someMove(packet)
 ```
 
+## constructor に渡した値は consume される
+
+`okMove` と `someMove` は、値を `MoveResult` / `MoveOption` に格納するときに `ensureMove()` を使います。
+
+そのため、渡す値はそこで last use である必要があります。`okMove` / `someMove` に渡した後で元の値を読もうとするコードは、コンパイル時に拒否されます。
+
+```nim
+var frame = makeFrame()
+
+let r = okMove(MoveResult[Frame, ErrorCode], frame)
+
+discard frame.data.len  # compile error
+```
+
+これにより、ownership transfer 後に誤って元の変数を再利用するコードを検出できます。
+
 ## single-use の挙動
 
 `MoveResult` と `MoveOption` は意図的に single-use です。
@@ -155,4 +172,4 @@ Nim 2.2 では object field に対する `ensureMove(self.value)` は拒否さ�
 nimble test
 ```
 
-テスト対象は ARC/ORC の debug / release build です。
+テスト対象は ARC/ORC の debug / release build です。compile-fail check も含まれており、`okMove` / `someMove` に渡した source value を後で読むコードがコンパイルできないことを確認します。

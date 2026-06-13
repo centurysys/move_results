@@ -39,6 +39,7 @@ successful value out and never use the container again.
 - no `get()` API
 - private payload fields
 - copy prevention
+- source values passed to `okMove` / `someMove` are rejected if reused afterwards
 - use-after-take detection via `MoveResultDefect`
 - `ensureMove()` at construction time to reject accidental implicit copies
 
@@ -117,6 +118,26 @@ proc readAndUse(): MoveOption[Packet] =
   return someMove(packet)
 ```
 
+## Source values are consumed at construction
+
+`okMove` and `someMove` use `ensureMove()` when storing a value into
+`MoveResult` or `MoveOption`.
+
+This means the source value must be the last use. Code that tries to read the
+source value after passing it to `okMove` or `someMove` is rejected at compile
+time.
+
+```nim
+var frame = makeFrame()
+
+let r = okMove(MoveResult[Frame, ErrorCode], frame)
+
+discard frame.data.len  # compile error
+```
+
+This helps catch accidental source reuse when transferring ownership into a
+`move_results` container.
+
 ## Single-use behavior
 
 `MoveResult` and `MoveOption` are intentionally single-use.
@@ -162,4 +183,6 @@ Do not use it when:
 nimble test
 ```
 
-The test suite covers ARC/ORC debug and release builds.
+The test suite covers ARC/ORC debug and release builds, including compile-fail
+checks that verify source values cannot be read after being passed to `okMove` or
+`someMove`.
