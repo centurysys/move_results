@@ -47,10 +47,10 @@ type
 # ------------------------------------------------------------------------------
 
 proc `=copy`*[T, E](dest: var MoveResult[T, E]; src: MoveResult[T, E]) {.error:
-    "MoveResult cannot be copied; use move, take(), or ? instead".}
+  "MoveResult cannot be copied; use move, take(), or ? instead".}
 
 proc `=copy`*[T](dest: var MoveOption[T]; src: MoveOption[T]) {.error:
-    "MoveOption cannot be copied; use move, take(), or ? instead".}
+  "MoveOption cannot be copied; use move, take(), or ? instead".}
 
 # ------------------------------------------------------------------------------
 # Defect helpers:
@@ -66,23 +66,32 @@ proc raiseMoveResultDefect(msg: string) {.noinline, noreturn.} =
 template okMove*(R: typedesc, valueExpr: untyped): untyped =
   ## Creates an Ok MoveResult for the explicitly supplied result type.
   ##
+  ## valueExpr must be movable.  ensureMove() is used here so that accidental
+  ## implicit copies at construction time are rejected at compile time.
+  ##
   ## Example:
   ##   return okMove(MoveResult[Frame, ErrorCode], frame)
   block:
     var ret: R
     ret.state = mrsOk
-    ret.value = move valueExpr
+    ret.value = ensureMove(valueExpr)
     ret
 
 template errMove*(R: typedesc, errorExpr: untyped): untyped =
   ## Creates an Err MoveResult for the explicitly supplied result type.
   ##
-  ## Error values are usually small enums/codes.  This constructor does not force
-  ## move because literals such as ErrorCode.Failed are immutable.
+  ## Error values are usually small enums/codes.  When errorExpr is movable,
+  ## ensureMove() is used.  For immutable literals such as ErrorCode.Failed, this
+  ## falls back to a normal assignment.
   block:
     var ret: R
     ret.state = mrsErr
-    ret.error = errorExpr
+
+    when compiles(ensureMove(errorExpr)):
+      ret.error = ensureMove(errorExpr)
+    else:
+      ret.error = errorExpr
+
     ret
 
 template okMove*(valueExpr: untyped): untyped =
@@ -107,10 +116,13 @@ template errMove*(errorExpr: untyped): untyped =
 
 template someMove*(valueExpr: untyped): untyped =
   ## Creates a MoveOption containing valueExpr.
+  ##
+  ## valueExpr must be movable.  ensureMove() is used here so that accidental
+  ## implicit copies at construction time are rejected at compile time.
   block:
     var ret: MoveOption[typeof(valueExpr)]
     ret.state = mosSome
-    ret.value = move valueExpr
+    ret.value = ensureMove(valueExpr)
     ret
 
 template noneMove*(T: typedesc): MoveOption[T] =
@@ -185,6 +197,11 @@ proc take*[T, E](self: var MoveResult[T, E]): T =
   ##
   ## This can be done only once.  After take(), self enters the consumed state and
   ## must not be queried again.
+  ##
+  ## Note: move is used here rather than ensureMove.  Nim 2.2 currently rejects
+  ## ensureMove(self.value) for object fields as an implicit copy, while move
+  ## self.value is the intended field move-out operation and is covered by the
+  ## pointer-stability tests.
   case self.state
   of mrsOk:
     result = move self.value
@@ -230,6 +247,9 @@ proc take*[T](self: var MoveOption[T]): T =
   ##
   ## This can be done only once.  After take(), self enters the consumed state and
   ## must not be queried again.
+  ##
+  ## Note: move is used here rather than ensureMove for the same reason as
+  ## MoveResult.take().
   case self.state
   of mosSome:
     result = move self.value
